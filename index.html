@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ရန်ကုန်မြို့ပတ်ရထား & YBS လမ်းညွှန် </title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts for Myanmar -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Padauk:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Leaflet Map CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            burmese: ['Padauk', 'sans-serif'],
+            sans: ['Plus Jakarta Sans', 'Padauk', 'sans-serif']
+          },
+          colors: {
+            railway: {
+              50: '#eff6ff',
+              500: '#1d4ed8',
+              600: '#1e40af',
+              700: '#1d3557',
+              800: '#0f172a'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Padauk', 'Plus Jakarta Sans', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+      z-index: 10;
+    }
+    .custom-station-pin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1d4ed8;
+      border: 2px solid #ffffff;
+      border-radius: 9999px;
+      color: white;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.25);
+      transition: transform 0.2s;
+    }
+    .custom-station-pin:hover {
+      transform: scale(1.25);
+    }
+    .user-loc-pulse {
+      background: #0284c7;
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 0 rgba(2, 132, 199, 0.6);
+      animation: pulse-ring 1.8s infinite;
+    }
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.7); }
+      70% { box-shadow: 0 0 0 16px rgba(2, 132, 199, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(2, 132, 199, 0); }
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased flex flex-col h-screen overflow-hidden">
+
+  <!-- Header Section -->
+  <header class="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white shadow-md z-30 flex-shrink-0">
+    <div class="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-xl shadow-inner">
+          <i class="fa-solid fa-train-subway text-sky-300"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight tracking-wide">ရန်ကုန်မြို့ပတ်ရထား & YBS လမ်းညွှန်</h1>
+          <p class="text-xs text-sky-200 opacity-90">တရားဝင်ဘူတာချိန်ဇယားများနှင့် YBS ဆက်သွယ်မှုများ</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-2">
+        <button id="locateMeBtn" class="bg-sky-500 hover:bg-sky-400 active:scale-95 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center space-x-1.5 shadow transition">
+          <i class="fa-solid fa-location-crosshairs"></i>
+          <span class="hidden sm:inline">လက်ရှိနေရာ ရှာရန်</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Live Status Bar -->
+  <div id="statusBanner" class="bg-sky-900/90 text-white px-4 py-2 text-xs flex items-center justify-between z-20 shadow-sm border-b border-sky-800">
+    <div class="flex items-center space-x-2 overflow-hidden">
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping flex-shrink-0"></span>
+      <span id="currentStatusText" class="truncate font-medium">GPS တည်နေရာကို ချိတ်ဆက်နေပါသည်...</span>
+    </div>
+    <button onclick="triggerLocate()" class="text-sky-300 hover:text-white underline text-xs flex-shrink-0 ml-2">
+      မွမ်းမံရန် <i class="fa-solid fa-rotate-right ml-1"></i>
+    </button>
+  </div>
+
+  <!-- Main App Layout -->
+  <div class="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+    
+    <!-- Map Container -->
+    <div class="flex-1 relative order-2 md:order-1 h-1/2 md:h-full">
+      <div id="map"></div>
+      
+      <!-- Map Quick Floating Actions -->
+      <div class="absolute top-3 right-3 z-[400] flex flex-col space-y-2">
+        <button onclick="centerYangonCentral()" title="ရန်ကုန်ဘူတာကြီးသို့" class="w-10 h-10 bg-white/95 text-slate-800 rounded-xl shadow-md flex items-center justify-center hover:bg-slate-50 transition border border-slate-200">
+          <i class="fa-solid fa-building-columns text-blue-700"></i>
+        </button>
+        <button onclick="toggleDirectionFilter()" title="မြို့ပတ်လမ်းကြောင်း အပြည့်ကြည့်ရန်" class="px-3 h-10 bg-white/95 text-slate-800 rounded-xl shadow-md flex items-center justify-center hover:bg-slate-50 text-xs font-bold border border-slate-200">
+          <i class="fa-solid fa-arrows-rotate text-emerald-600 mr-1"></i> <span>မြို့ပတ်</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Sidebar / Drawer Container -->
+    <div class="w-full md:w-[420px] lg:w-[460px] bg-white order-1 md:order-2 flex flex-col h-1/2 md:h-full shadow-2xl z-20 border-l border-slate-200">
+      
+      <!-- Search & Filters -->
+      <div class="p-3 bg-slate-50 border-b border-slate-200 flex-shrink-0 space-y-2">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-sm"></i>
+          <input type="text" id="searchInput" placeholder="ဘူတာ၊ မြို့နယ် (သို့) YBS ကားလိုင်း ရှာပါ..." 
+                 class="w-full bg-white pl-9 pr-8 py-2 rounded-xl text-sm border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition">
+          <button id="clearSearch" class="hidden absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <!-- Segmented Tab Navigation -->
+        <div class="flex bg-slate-200 p-0.5 rounded-lg text-xs font-semibold">
+          <button onclick="switchTab('stations')" id="tabBtnStations" class="flex-1 py-1.5 rounded-md bg-white text-blue-700 shadow-sm transition">
+            <i class="fa-solid fa-train mr-1"></i> ဘူတာအားလုံး (<span id="stationCount">၃၈</span>)
+          </button>
+          <button onclick="switchTab('timetable')" id="tabBtnTimetable" class="flex-1 py-1.5 rounded-md text-slate-600 hover:text-slate-900 transition">
+            <i class="fa-solid fa-clock mr-1"></i> အချိန်ဇယားများ
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab Content 1: Station List View -->
+      <div id="tabStations" class="flex-1 overflow-y-auto divide-y divide-slate-100 p-2 space-y-2">
+        <!-- Rendered station list cards -->
+      </div>
+
+      <!-- Tab Content 2: Timetable View -->
+      <div id="tabTimetable" class="flex-1 overflow-y-auto p-3 hidden space-y-4">
+        <div class="bg-blue-50 border border-blue-200 p-3 rounded-xl text-xs text-blue-900 flex items-start space-x-2">
+          <i class="fa-solid fa-circle-info text-blue-600 text-sm mt-0.5"></i>
+          <div>
+            <p class="font-bold">ဘူတာရထား အချိန်ဇယား မှတ်ချက်</p>
+            <p>ဘူတာများတွင် တရားဝင် ကပ်ထားသော မင်္ဂလာဒုံဘူတာ နှင့် ပုဇွန်တောင်ဘူတာတို့၏ မြို့ပတ်ရထားအချိန်စာရင်းများ ဖြစ်ပါသည်။</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <span class="text-xs font-bold text-slate-600">ဘူတာရွေးရန်:</span>
+          <select id="scheduleStationSelect" onchange="renderScheduleBoard()" class="text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-blue-500 focus:outline-none flex-1">
+            <option value="mingaladon">မင်္ဂလာဒုံဘူတာ (Mingaladon Station)</option>
+            <option value="pazundaung">ပုဇွန်တောင်ဘူတာ (Pazundaung Station)</option>
+          </select>
+        </div>
+
+        <div id="scheduleContainer" class="space-y-3"></div>
+      </div>
+
+      <!-- Selected Station Detailed Drawer Modal -->
+      <div id="detailPanel" class="hidden absolute inset-0 bg-white z-50 flex flex-col">
+        <div class="p-3 bg-gradient-to-r from-blue-800 to-indigo-900 text-white flex items-center justify-between flex-shrink-0">
+          <div class="flex items-center space-x-2">
+            <button onclick="closeDetailPanel()" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition">
+              <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <h2 id="detailStationName" class="font-bold text-base truncate">ဘူတာအမည်</h2>
+          </div>
+          <span id="detailDistanceBadge" class="bg-blue-400/30 text-white text-[11px] px-2 py-0.5 rounded-full font-sans border border-blue-300/30 flex-shrink-0">
+            0 km
+          </span>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="flex items-center justify-between text-slate-500 mb-1">
+              <span>တည်နေရာ မြို့နယ်</span>
+              <span id="detailTownship" class="font-bold text-slate-800 text-sm">မြို့နယ်</span>
+            </div>
+            <div class="flex items-center justify-between text-slate-500">
+              <span>ရထားလမ်းအမျိုးအစား</span>
+              <span class="font-semibold text-slate-700">ရန်ကုန်မြို့ပတ် လမ်းပိုင်း</span>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="font-bold text-slate-800 text-sm flex items-center mb-2">
+              <i class="fa-solid fa-bus text-amber-500 mr-1.5"></i> နီးစပ်ရာ YBS ကားမှတ်တိုင် နှင့် ကားလိုင်းများ
+            </h3>
+            <div id="detailYBSList" class="space-y-2"></div>
+          </div>
+
+          <div class="pt-2">
+            <h3 class="font-bold text-slate-800 text-sm mb-2 flex items-center">
+              <i class="fa-solid fa-map-location-dot text-blue-600 mr-1.5"></i> လမ်းညွှန်ချက်
+            </h3>
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="openGoogleMapsNav()" class="bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-xl font-bold flex items-center justify-center space-x-1.5 transition shadow">
+                <i class="fa-solid fa-diamond-turn-right text-sm"></i>
+                <span>Google Maps</span>
+              </button>
+              <button onclick="focusOnStationMap()" class="bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-xl font-bold flex items-center justify-center space-x-1.5 transition shadow">
+                <i class="fa-solid fa-crosshairs text-sm"></i>
+                <span>မြေပုံကြည့်ရန်</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="stationTimetableSection"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Yangon Circular Railway stations dataset
+    const stations = [
+      { id: "yangon_central", nameMm: "ရန်ကုန်ဘူတာကြီး", nameEn: "Yangon Central", township: "မင်္ဂလာတောင်ညွန့်", lat: 16.7801, lng: 96.1607, ybsStops: [{ name: "ဘူတာကြီးမှတ်တိုင် (ဗိုလ်ချုပ်လမ်း)", lines: ["YBS 21", "YBS 37", "YBS 56", "YBS 62", "YBS 114"] }] },
+      { id: "pagoda_road", nameMm: "ဘုရားလမ်း", nameEn: "Pagoda Road", township: "ဒဂုံ", lat: 16.7820, lng: 96.1558, ybsStops: [{ name: "ဗိုလ်ချုပ်လမ်း မီးပွိုင့်", lines: ["YBS 21", "YBS 37", "YBS 39"] }] },
+      { id: "pyay_road", nameMm: "ပြည်လမ်းဘူတာ", nameEn: "Pyay Road", township: "ဒဂုံ", lat: 16.7844, lng: 96.1485, ybsStops: [{ name: "စိန့်ဂျွန်း / သမ္မတရုပ်ရှင်ရုံမှတ်တိုင်", lines: ["YBS 30", "YBS 37", "YBS 65"] }] },
+      { id: "shan_road", nameMm: "ရှမ်းလမ်းဘူတာ", nameEn: "Shan Road", township: "စမ်းချောင်း", lat: 16.7905, lng: 96.1396, ybsStops: [{ name: "ရှမ်းလမ်းမှတ်တိုင် (ဗဟိုလမ်း)", lines: ["YBS 13", "YBS 35", "YBS 89"] }] },
+      { id: "ahlone_road", nameMm: "အလုံလမ်းဘူတာ", nameEn: "Ahlone Road", township: "အလုံ", lat: 16.7938, lng: 96.1345, ybsStops: [{ name: "အလုံသစ်တောမှတ်တိုင်", lines: ["YBS 21", "YBS 39", "YBS 57"] }] },
+      { id: "panhlaing_road", nameMm: "ပန်းလှိုင်လမ်းဘူတာ", nameEn: "Panhlaing Road", township: "ကြည့်မြင်တိုင်", lat: 16.7984, lng: 96.1310, ybsStops: [{ name: "ပန်းလှိုင်မှတ်တိုင်", lines: ["YBS 13", "YBS 39"] }] },
+      { id: "kyimyindaing", nameMm: "ကြည့်မြင်တိုင်ဘူတာ", nameEn: "Kyimyindaing", township: "ကြည့်မြင်တိုင်", lat: 16.8052, lng: 96.1264, ybsStops: [{ name: "ကြည့်မြင်တိုင်ညဈေး / ကမ်းနားလမ်း", lines: ["YBS 13", "YBS 21", "YBS 39", "YBS 89"] }] },
+      { id: "hanthawaddy", nameMm: "ဟံသာဝတီဘူတာ", nameEn: "Hanthawaddy", township: "ကမာရွတ်", lat: 16.8188, lng: 96.1268, ybsStops: [{ name: "ဟံသာဝတီအဝိုင်း", lines: ["YBS 21", "YBS 30", "YBS 37", "YBS 65"] }] },
+      { id: "hledan", nameMm: "လှည်းတန်းဘူတာ", nameEn: "Hledan", township: "ကမာရွတ်", lat: 16.8262, lng: 96.1284, ybsStops: [{ name: "လှည်းတန်းစင်တာ / အင်းစိန်လမ်း", lines: ["YBS 21", "YBS 30", "YBS 37", "YBS 39", "YBS 61", "YBS 65"] }] },
+      { id: "kamayut", nameMm: "ကမာရွတ်ဘူတာ", nameEn: "Kamayut", township: "ကမာရွတ်", lat: 16.8370, lng: 96.1252, ybsStops: [{ name: "ဘူတာရုံလမ်းမှတ်တိုင်", lines: ["YBS 21", "YBS 39", "YBS 61"] }] },
+      { id: "thamaing", nameMm: "သမိုင်းဘူတာ", nameEn: "Thamaing", township: "မရမ်းကုန်း", lat: 16.8521, lng: 96.1215, ybsStops: [{ name: "သမိုင်းလမ်းဆုံမှတ်တိုင်", lines: ["YBS 21", "YBS 37", "YBS 39", "YBS 61"] }] },
+      { id: "thamaing_myothit", nameMm: "သမိုင်းမြို့သစ်ဘူတာ", nameEn: "Thamaing Myothit", township: "မရမ်းကုန်း", lat: 16.8624, lng: 96.1172, ybsStops: [{ name: "သမိုင်းမြို့သစ်မှတ်တိုင်", lines: ["YBS 21", "YBS 39"] }] },
+      { id: "gyogone", nameMm: "ကြို့ကုန်းဘူတာ", nameEn: "Gyogone", township: "အင်းစိန်", lat: 16.8732, lng: 96.1130, ybsStops: [{ name: "ကြို့ကုန်းအနောက်မှတ်တိုင်", lines: ["YBS 21", "YBS 39", "YBS 61"] }] },
+      { id: "insein", nameMm: "အင်းစိန်ဘူတာ", nameEn: "Insein", township: "အင်းစိန်", lat: 16.8835, lng: 96.1084, ybsStops: [{ name: "အင်းစိန်ဈေးမှတ်တိုင်", lines: ["YBS 21", "YBS 37", "YBS 39", "YBS 61", "YBS 99"] }] },
+      { id: "ywama", nameMm: "ရွာမဘူတာ", nameEn: "Ywama", township: "အင်းစိန်", lat: 16.8961, lng: 96.0988, ybsStops: [{ name: "ရွာမအနောက်မှတ်တိုင်", lines: ["YBS 21", "YBS 61"] }] },
+      { id: "hpawkan", nameMm: "ဖော့ကန်ဘူတာ", nameEn: "Hpawkan", township: "အင်းစိန်", lat: 16.9070, lng: 96.0950, ybsStops: [{ name: "ဖော့ကန်မှတ်တိုင်", lines: ["YBS 21", "YBS 61", "YBS 104"] }] },
+      { id: "aungsan_myo", nameMm: "အောင်ဆန်းမြို့ဘူတာ", nameEn: "Aungsan Myo", township: "အင်းစိန်", lat: 16.9208, lng: 96.0910, ybsStops: [{ name: "အောင်ဆန်းဈေးမှတ်တိုင်", lines: ["YBS 21", "YBS 61"] }] },
+      { id: "danyingone", nameMm: "ဒညင်းကုန်းဘူတာ", nameEn: "Danyingone", township: "အင်းစိန်", lat: 16.9360, lng: 96.0890, ybsStops: [{ name: "ဒညင်းကုန်းလက်ကားဈေး", lines: ["YBS 21", "YBS 61", "YBS 68", "YBS 104"] }] },
+      { id: "shwepyitha", nameMm: "ရွှေပြည်သာဘူတာ", nameEn: "Shwepyitha", township: "ရွှေပြည်သာ", lat: 16.9535, lng: 96.0970, ybsStops: [{ name: "ရွှေပြည်သာဈေးမှတ်တိုင်", lines: ["YBS 41", "YBS 68", "YBS 83"] }] },
+      { id: "thadukan", nameMm: "သာဓုကန်ဘူတာ", nameEn: "Thadukan", township: "ရွှေပြည်သာ", lat: 16.9690, lng: 96.1090, ybsStops: [{ name: "သာဓုကန်စက်မှုဇုန်", lines: ["YBS 41", "YBS 83"] }] },
+      { id: "industrial_zone_2", nameMm: "စက်မှုဇုန် (၂)", nameEn: "Industrial Zone 2", township: "မင်္ဂလာဒုံ", lat: 16.9610, lng: 96.1280, ybsStops: [{ name: "ဇုန် ၂ ထိပ်မှတ်တိုင်", lines: ["YBS 36", "YBS 90"] }] },
+      { id: "wireless", nameMm: "ဝါယာလက်ဘူတာ", nameEn: "Wireless", township: "မင်္ဂလာဒုံ", lat: 16.9450, lng: 96.1470, ybsStops: [{ name: "ဝါယာလက်မှတ်တိုင် (ပြည်လမ်း)", lines: ["YBS 36", "YBS 37", "YBS 90"] }] },
+      { id: "mingaladon_market", nameMm: "မင်္ဂလာဒုံဈေးဘူတာ", nameEn: "Mingaladon Market", township: "မင်္ဂလာဒုံ", lat: 16.9330, lng: 96.1620, ybsStops: [{ name: "မင်္ဂလာဒုံဈေးမှတ်တိုင်", lines: ["YBS 36", "YBS 37", "YBS 65", "YBS 90"] }] },
+      { id: "mingaladon", nameMm: "မင်္ဂလာဒုံဘူတာ", nameEn: "Mingaladon", township: "မင်္ဂလာဒုံ", lat: 16.9180, lng: 96.1668, ybsStops: [{ name: "မင်္ဂလာဒုံဘူတာရုံမှတ်တိုင်", lines: ["YBS 36", "YBS 37", "YBS 65"] }] },
+      { id: "weibargi", nameMm: "ဝေဘာဂီဘူတာ", nameEn: "Weibargi", township: "မြောက်ဥက္ကလာပ", lat: 16.9015, lng: 96.1730, ybsStops: [{ name: "ဝေဘာဂီလမ်းဆုံမှတ်တိုင်", lines: ["YBS 24", "YBS 31", "YBS 96"] }] },
+      { id: "okkallapa", nameMm: "ဥက္ကလာပဘူတာ", nameEn: "Okkallapa", township: "မြောက်ဥက္ကလာပ", lat: 16.8830, lng: 96.1740, ybsStops: [{ name: "ဥက္ကလာပဘုရားမှတ်တိုင်", lines: ["YBS 24", "YBS 28", "YBS 36"] }] },
+      { id: "paywetseikkon", nameMm: "ပုရွက်ဆိတ်ကုန်းဘူတာ", nameEn: "Paywetseikkon", township: "မြောက်ဥက္ကလာပ", lat: 16.8690, lng: 96.1720, ybsStops: [{ name: "ပုရွက်ဆိတ်ကုန်းမှတ်တိုင်", lines: ["YBS 24", "YBS 28"] }] },
+      { id: "kyaukyaedwin", nameMm: "ကျောက်ရေတွင်းဘူတာ", nameEn: "Kyaukyaedwin", township: "မရမ်းကုန်း", lat: 16.8580, lng: 96.1650, ybsStops: [{ name: "ကျောက်ရေတွင်းမှတ်တိုင်", lines: ["YBS 36", "YBS 38", "YBS 65"] }] },
+      { id: "tada_galay", nameMm: "တံတားကလေးဘူတာ", nameEn: "Tadagalay", township: "မရမ်းကုန်း", lat: 16.8520, lng: 96.1600, ybsStops: [{ name: "တံတားကလေးမှတ်တိုင်", lines: ["YBS 36", "YBS 38"] }] },
+      { id: "yeku", nameMm: "ရေကူးဘူတာ", nameEn: "Yeku", township: "မရမ်းကုန်း", lat: 16.8450, lng: 96.1550, ybsStops: [{ name: "ရေကူးဘူတာရုံလမ်း", lines: ["YBS 36", "YBS 38", "YBS 65"] }] },
+      { id: "parami", nameMm: "ပါရမီဘူတာ", nameEn: "Parami", township: "မရမ်းကုန်း", lat: 16.8375, lng: 96.1530, ybsStops: [{ name: "ပါရမီလမ်းဆုံ", lines: ["YBS 30", "YBS 36", "YBS 38", "YBS 94"] }] },
+      { id: "kanbe", nameMm: "ကံဘဲ့ဘူတာ", nameEn: "Kanbe", township: "ရန်ကင်း", lat: 16.8285, lng: 96.1570, ybsStops: [{ name: "ရန်ကင်းစင်တာမှတ်တိုင်", lines: ["YBS 12", "YBS 24", "YBS 29", "YBS 38"] }] },
+      { id: "baukhtaw", nameMm: "ဘောက်ထော်ဘူတာ", nameEn: "Baukhtaw", township: "ရန်ကင်း", lat: 16.8210, lng: 96.1645, ybsStops: [{ name: "ဘောက်ထော်မှတ်တိုင်", lines: ["YBS 12", "YBS 24", "YBS 94"] }] },
+      { id: "tamwe", nameMm: "တာမွေဘူတာ", nameEn: "Tamwe", township: "တာမွေ", lat: 16.8120, lng: 96.1730, ybsStops: [{ name: "ကျောက်မြောင်း / တာမွေဈေး", lines: ["YBS 8", "YBS 14", "YBS 29", "YBS 35"] }] },
+      { id: "myittarnyunt", nameMm: "မေတ္တာညွန့်ဘူတာ", nameEn: "Myittarnyunt", township: "တာမွေ", lat: 16.8040, lng: 96.1780, ybsStops: [{ name: "မေတ္တာညွန့်မှတ်တိုင်", lines: ["YBS 8", "YBS 14", "YBS 29"] }] },
+      { id: "mhlwagone", nameMm: "မလွှကုန်းဘူတာ", nameEn: "Mahlwagone", township: "မင်္ဂလာတောင်ညွန့်", lat: 16.7950, lng: 96.1820, ybsStops: [{ name: "မလွှကုန်းမှတ်တိုင်", lines: ["YBS 14", "YBS 29", "YBS 35"] }] },
+      { id: "pazundaung", nameMm: "ပုဇွန်တောင်ဘူတာ", nameEn: "Pazundaung", township: "ပုဇွန်တောင်", lat: 16.7865, lng: 96.1745, ybsStops: [{ name: "ပုဇွန်တောင်ဈေးမှတ်တိုင်", lines: ["YBS 21", "YBS 29", "YBS 35", "YBS 57"] }] }
+    ];
+
+    // Timetable extracted from user reference photos
+    const timetableData = {
+      mingaladon: {
+        title: "မင်္ဂလာဒုံဘူတာ၏ ရထားအချိန်စာရင်း",
+        dir1: {
+          label: "အင်းစိန်ဘက်သို့ / အင်းစိန်(မှ)ရန်ကုန်ဘက်သို့ (လက်ဝဲရစ်)",
+          badge: "လက်ဝဲရစ်",
+          trains: [
+            { no: "ဇ-၂ (RBE)", time: "နံနက် ၀၈:၀၀", dest: "အင်းစိန်-ရန်ကုန်" },
+            { no: "က-၃ (RBE)", time: "နံနက် ၀၉:၅၀", dest: "အင်းစိန်-ရန်ကုန်" },
+            { no: "ခ-၃ (RBE)", time: "နံနက် ၁၂:၀၅", dest: "အင်းစိန်" },
+            { no: "ဂ-၅ (RBE)", time: "နေ့လည် ၀၁:၄၅", dest: "အင်းစိန်" },
+            { no: "ခ-၅ (RBE)", time: "ညနေ ၀၃:၃၅", dest: "အင်းစိန်-ရန်ကုန်" },
+            { no: "ဂ-၇ (RBE)", time: "ညနေ ၅:၀၀", dest: "အင်းစိန်" },
+            { no: "င-၂ (DEMU)", time: "ညနေ ၅:၂၁", dest: "အင်းစိန်" },
+            { no: "ဆ-၂ (DEMU)", time: "ညနေ ၆:၁၅", dest: "အင်းစိန်" }
+          ]
+        },
+        dir2: {
+          label: "ရန်ကုန်ဘက်သို့ (လက်ယာရစ်)",
+          badge: "လက်ယာရစ်",
+          trains: [
+            { no: "ဇ-၂ (RBE)", time: "နံနက် ၀၅:၅၉", dest: "ရန်ကုန်" },
+            { no: "ဆ-၁ (DEMU)", time: "နံနက် ၀၇:၄၃", dest: "ရန်ကုန်" },
+            { no: "င-၁ (DEMU)", time: "နံနက် ၀၈:၂၈", dest: "ရန်ကုန်" },
+            { no: "ခ-၂ (RBE)", time: "နံနက် ၁၀:၀၄", dest: "ရန်ကုန်" },
+            { no: "ဂ-၄ (RBE)", time: "နံနက် ၁၁:၄၄", dest: "ရန်ကုန်" },
+            { no: "ခ-၄ (RBE)", time: "နေ့လည် ၀၁:၂၉", dest: "ရန်ကုန်" },
+            { no: "ဂ-၆ (RBE)", time: "ညနေ ၀၂:၅၄", dest: "ရန်ကုန်" }
+          ]
+        }
+      },
+      pazundaung: {
+        title: "ပုဇွန်တောင်ဘူတာ - ရထားအချိန်ဇယား",
+        dir1: {
+          label: "ရန်ကုန်ဘက်သို့ (လက်ယာရစ်)",
+          badge: "လက်ယာရစ်",
+          trains: [
+            { no: "(RBE) စ-၁", time: "နံနက် ၆:၄၈", dest: "ရန်ကုန်" },
+            { no: "(DEMU) ဆ-၁", time: "နံနက် ၈:၂၃", dest: "ရန်ကုန်" },
+            { no: "(EP) ဂ-၂", time: "နံနက် ၈:၅၀", dest: "ရန်ကုန်" },
+            { no: "(DEMU) င-၁", time: "နံနက် ၉:၀၈", dest: "ရန်ကုန်" },
+            { no: "(EP) ခ-၃", time: "နံနက် ၁၀:၅၃", dest: "ရန်ကုန်" },
+            { no: "(EP) ဂ-၃", time: "နံနက် ၁၁:၄၃", dest: "ရန်ကုန်" },
+            { no: "(RBE) က-၅", time: "နေ့လည် ၂:၁၈", dest: "ရန်ကုန်" },
+            { no: "(EP) ဂ-၅", time: "နေ့လည် ၃:၃၈", dest: "ရန်ကုန်" },
+            { no: "(EP) ခ-၅", time: "ညနေ ၄:၁၃", dest: "ရန်ကုန်" },
+            { no: "(EP) ခ-၆", time: "ညနေ ၆:၅၈", dest: "ရန်ကုန်" }
+          ]
+        },
+        dir2: {
+          label: "မင်္ဂလာဒုံ - အင်းစိန်ဘက်သို့ (လက်ဝဲရစ်)",
+          badge: "လက်ဝဲရစ်",
+          trains: [
+            { no: "(RBE) ဇ-၂", time: "နံနက် ၇:၁၁", dest: "မြို့ပတ်-ရန်ကုန်ထိ" },
+            { no: "(EP) ဂ-၁", time: "နံနက် ၇:၃၀", dest: "တိုးကြောင်ကလေး" },
+            { no: "(RBE) က-၃", time: "နံနက် ၉:၀၁", dest: "မြို့ပတ်-ရန်ကုန်ထိ" },
+            { no: "(EP) ခ-၄", time: "နေ့လည် ၁၁:၂၆", dest: "မြို့ပတ်-ရန်ကုန်ထိ" },
+            { no: "(EP) ဂ-၄", time: "နေ့လည် ၁၂:၃၆", dest: "မြို့ပတ်-အင်းစိန်ထိ" },
+            { no: "(RBE) က-၆", time: "ညနေ ၂:၄၆", dest: "မြို့ပတ်-ရန်ကုန်ထိ" },
+            { no: "(EP) ဂ-၆", time: "ညနေ ၄:၁၁", dest: "မြို့ပတ်-ရန်ကုန်ထိ" },
+            { no: "(DEMU) င-၂", time: "ညနေ ၄:၄၁", dest: "မြို့ပတ်-အင်းစိန်ထိ" },
+            { no: "(DEMU) ဆ-၂", time: "ညနေ ၅:၃၆", dest: "မြို့ပတ်-အင်းစိန်ထိ" }
+          ]
+        }
+      }
+    };
+
+    let map;
+    let markersLayer = L.layerGroup();
+    let routeLine;
+    let userMarker = null;
+    let currentUserLat = null;
+    let currentUserLng = null;
+    let selectedStation = null;
+    let watchId = null;
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // Earth's radius in km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function formatDistance(distKm) {
+      if (distKm === null || isNaN(distKm)) return "အကွာအဝေး တွက်ချက်နေသည်";
+      if (distKm < 0.2) return "ရောက်ရှိနေပါပြီ";
+      if (distKm < 1) return Math.round(distKm * 1000) + " မီတာ";
+      return distKm.toFixed(1) + " ကီလိုမီတာ";
+    }
+
+    function initMap() {
+      map = L.map('map', { zoomControl: false }).setView([16.8500, 96.1400], 12);
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      markersLayer.addTo(map);
+
+      const latLngs = stations.map(s => [s.lat, s.lng]);
+      latLngs.push([stations[0].lat, stations[0].lng]); // Loop back
+
+      routeLine = L.polyline(latLngs, {
+        color: '#1d4ed8', weight: 4, opacity: 0.85, dashArray: '6, 6', lineJoin: 'round'
+      }).addTo(map);
+
+      renderMapMarkers();
+    }
+
+    function renderMapMarkers() {
+      markersLayer.clearLayers();
+      stations.forEach(st => {
+        const customIcon = L.divIcon({
+          className: 'custom-station-pin',
+          html: `<i class="fa-solid fa-train text-[10px]"></i>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11]
+        });
+
+        const marker = L.marker([st.lat, st.lng], { icon: customIcon });
+        marker.on('click', () => openStationDetail(st.id));
+        marker.bindTooltip(`<b>${st.nameMm}</b><br><span style="font-size:10px">${st.township}</span>`, { direction: 'top', offset: [0, -8] });
+        markersLayer.addLayer(marker);
+      });
+    }
+
+    function renderStationList(filteredStations = stations) {
+      const container = document.getElementById('tabStations');
+      document.getElementById('stationCount').innerText = filteredStations.length;
+
+      if (filteredStations.length === 0) {
+        container.innerHTML = `<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-route text-3xl mb-2 text-slate-300"></i><p class="text-xs">ရှာဖွေမှုနှင့် ကိုက်ညီသော ဘူတာ မတွေ့ရှိပါ</p></div>`;
+        return;
+      }
+
+      container.innerHTML = filteredStations.map((st, index) => {
+        let distText = "";
+        let isNearest = false;
+        if (currentUserLat !== null && currentUserLng !== null) {
+          const d = calculateDistance(currentUserLat, currentUserLng, st.lat, st.lng);
+          distText = formatDistance(d);
+          if (d < 0.25) isNearest = true;
+        }
+        const ybsTags = st.ybsStops.flatMap(stop => stop.lines).slice(0, 4);
+
+        return `
+          <div onclick="openStationDetail('${st.id}')" class="p-3 bg-white rounded-xl border border-slate-200/80 hover:border-blue-400 hover:shadow-md cursor-pointer transition flex items-start space-x-3 group ${isNearest ? 'ring-2 ring-emerald-500 bg-emerald-50/40' : ''}">
+            <div class="w-8 h-8 rounded-lg ${isNearest ? 'bg-emerald-600' : 'bg-blue-600'} text-white flex items-center justify-center font-bold text-xs flex-shrink-0 group-hover:scale-105 transition shadow-sm">
+              ${index + 1}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between">
+                <h4 class="font-bold text-slate-900 text-sm truncate group-hover:text-blue-700 transition">${st.nameMm}</h4>
+                ${distText ? `<span class="text-[11px] font-semibold ${isNearest ? 'text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded' : 'text-slate-500'}">${distText}</span>` : ''}
+              </div>
+              <p class="text-[11px] text-slate-500 mb-1.5 truncate"><i class="fa-solid fa-location-dot text-slate-400 mr-1 text-[10px]"></i>${st.township}မြို့နယ် | ${st.nameEn}</p>
+              <div class="flex flex-wrap gap-1 items-center">
+                <span class="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex items-center"><i class="fa-solid fa-bus mr-1 text-[9px]"></i> YBS:</span>
+                ${ybsTags.map(y => `<span class="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-medium">${y}</span>`).join('')}
+              </div>
+            </div>
+            <div class="text-slate-400 group-hover:text-blue-600 self-center"><i class="fa-solid fa-angle-right"></i></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openStationDetail(stationId) {
+      const st = stations.find(s => s.id === stationId);
+      if (!st) return;
+      selectedStation = st;
+
+      document.getElementById('detailStationName').innerText = `${st.nameMm} (${st.nameEn})`;
+      document.getElementById('detailTownship').innerText = `${st.township} မြို့နယ်`;
+
+      if (currentUserLat !== null && currentUserLng !== null) {
+        const d = calculateDistance(currentUserLat, currentUserLng, st.lat, st.lng);
+        document.getElementById('detailDistanceBadge').innerText = formatDistance(d);
+        document.getElementById('detailDistanceBadge').classList.remove('hidden');
+      } else {
+        document.getElementById('detailDistanceBadge').classList.add('hidden');
+      }
+
+      document.getElementById('detailYBSList').innerHTML = st.ybsStops.map(stop => `
+        <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+          <div class="font-bold text-slate-800 text-xs flex items-center"><i class="fa-solid fa-sign-hanging text-amber-600 mr-1.5"></i>${stop.name}</div>
+          <div class="flex flex-wrap gap-1">
+            ${stop.lines.map(l => `<span class="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2 py-0.5 rounded-md font-semibold">${l}</span>`).join('')}
+          </div>
+        </div>
+      `).join('');
+
+      const timetableSection = document.getElementById('stationTimetableSection');
+      if (st.id === 'mingaladon' || st.id === 'pazundaung') {
+        timetableSection.innerHTML = `
+          <div class="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-bold text-indigo-900 text-xs"><i class="fa-solid fa-calendar-days mr-1 text-indigo-600"></i> တရားဝင်ရထားအချိန်ဇယား ရရှိနိုင်ပါသည်</span>
+              <button onclick="goToScheduleTab('${st.id}')" class="text-xs bg-indigo-600 text-white px-2.5 py-1 rounded-md font-bold hover:bg-indigo-700 transition">ကြည့်ရန်</button>
+            </div>
+          </div>
+        `;
+      } else {
+        timetableSection.innerHTML = `<div class="mt-4 p-2.5 bg-slate-100 rounded-xl text-slate-500 text-[11px]"><i class="fa-solid fa-clock-rotate-left mr-1"></i> မနက် ၆:၀၀ မှ ညနေ ၆:၀၀ အတွင်း ပုံမှန်ပြေးဆွဲလျက်ရှိပါသည်။</div>`;
+      }
+
+      map.flyTo([st.lat, st.lng], 15, { duration: 1.2 });
+      document.getElementById('detailPanel').classList.remove('hidden');
+    }
+
+    function closeDetailPanel() { document.getElementById('detailPanel').classList.add('hidden'); }
+    function focusOnStationMap() { if (selectedStation) map.flyTo([selectedStation.lat, selectedStation.lng], 16); }
+    function openGoogleMapsNav() {
+      if (selectedStation) {
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedStation.lat},${selectedStation.lng}&travelmode=walking`, '_blank');
+      }
+    }
+
+    function updatePosition(position) {
+      currentUserLat = position.coords.latitude;
+      currentUserLng = position.coords.longitude;
+
+      if (userMarker) {
+        userMarker.setLatLng([currentUserLat, currentUserLng]);
+      } else {
+        userMarker = L.marker([currentUserLat, currentUserLng], {
+          icon: L.divIcon({ className: 'user-loc-pulse', html: '', iconSize: [16, 16], iconAnchor: [8, 8] })
+        }).addTo(map);
+      }
+
+      stations.sort((a, b) => calculateDistance(currentUserLat, currentUserLng, a.lat, a.lng) - calculateDistance(currentUserLat, currentUserLng, b.lat, b.lng));
+      const nearestDist = calculateDistance(currentUserLat, currentUserLng, stations[0].lat, stations[0].lng);
+      
+      const banner = document.getElementById('currentStatusText');
+      if (nearestDist < 0.2) {
+        banner.innerHTML = `လက်ရှိရောက်ရှိနေသော ဘူတာ - <b class="text-white">${stations[0].nameMm}</b>`;
+      } else {
+        banner.innerHTML = `အနီးဆုံးဘူတာ - <b class="text-white">${stations[0].nameMm}</b> (${formatDistance(nearestDist)} အကွာ)`;
+      }
+
+      renderStationList();
+    }
+
+    function triggerLocate() {
+      const banner = document.getElementById('currentStatusText');
+      banner.innerText = "GPS ရှာဖွေနေပါသည်...";
+      if (!navigator.geolocation) {
+        banner.innerText = "GPS စနစ် အသုံးမပြုနိုင်ပါ";
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        updatePosition,
+        () => { banner.innerText = "GPS တည်နေရာ ရယူခွင့် ပိတ်ထားပါသည်"; },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+
+      if (!watchId) {
+        watchId = navigator.geolocation.watchPosition(updatePosition, null, { enableHighAccuracy: true });
+      }
+    }
+
+    function renderScheduleBoard() {
+      const selected = document.getElementById('scheduleStationSelect').value;
+      const data = timetableData[selected];
+      const container = document.getElementById('scheduleContainer');
+      if (!data) return;
+
+      const buildTable = (section) => `
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div class="bg-blue-800 text-white px-3 py-2 text-xs font-bold flex items-center justify-between">
+            <span>${section.label}</span>
+            <span class="bg-blue-600 text-[10px] px-2 py-0.5 rounded">${section.badge}</span>
+          </div>
+          <div class="divide-y divide-slate-100 text-xs">
+            <div class="grid grid-cols-12 bg-slate-100 p-2 font-bold text-slate-600 text-[11px]">
+              <div class="col-span-5">ရထားအမှတ်</div>
+              <div class="col-span-4">ဆိုက်/ထွက်ချိန်</div>
+              <div class="col-span-3 text-right">ခရီးဆုံး</div>
+            </div>
+            ${section.trains.map(t => `
+              <div class="grid grid-cols-12 p-2.5 items-center hover:bg-slate-50">
+                <div class="col-span-5 font-mono font-bold text-blue-700">${t.no}</div>
+                <div class="col-span-4 text-slate-700 font-medium">${t.time}</div>
+                <div class="col-span-3 text-right text-slate-600 truncate">${t.dest}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      container.innerHTML = `
+        <h3 class="font-bold text-sm text-slate-800 mb-2">${data.title}</h3>
+        <div class="space-y-3">
+          ${buildTable(data.dir1)}
+          ${buildTable(data.dir2)}
+        </div>
+      `;
+    }
+
+    function switchTab(tabId) {
+      document.getElementById('tabStations').classList.toggle('hidden', tabId !== 'stations');
+      document.getElementById('tabTimetable').classList.toggle('hidden', tabId !== 'timetable');
+      document.getElementById('tabBtnStations').className = tabId === 'stations' ? 'flex-1 py-1.5 rounded-md bg-white text-blue-700 shadow-sm transition' : 'flex-1 py-1.5 rounded-md text-slate-600 transition';
+      document.getElementById('tabBtnTimetable').className = tabId === 'timetable' ? 'flex-1 py-1.5 rounded-md bg-white text-blue-700 shadow-sm transition' : 'flex-1 py-1.5 rounded-md text-slate-600 transition';
+      if (tabId === 'timetable') renderScheduleBoard();
+    }
+
+    function goToScheduleTab(key) {
+      closeDetailPanel();
+      document.getElementById('scheduleStationSelect').value = key;
+      switchTab('timetable');
+    }
+
+    function centerYangonCentral() { map.flyTo([16.7801, 96.1607], 15); }
+    function toggleDirectionFilter() { map.fitBounds(routeLine.getBounds(), { padding: [30, 30] }); }
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      document.getElementById('clearSearch').classList.toggle('hidden', q.length === 0);
+      renderStationList(stations.filter(st => 
+        st.nameMm.toLowerCase().includes(q) || 
+        st.nameEn.toLowerCase().includes(q) || 
+        st.township.toLowerCase().includes(q) || 
+        st.ybsStops.some(b => b.name.toLowerCase().includes(q) || b.lines.some(l => l.toLowerCase().includes(q)))
+      ));
+    });
+
+    document.getElementById('clearSearch').addEventListener('click', () => {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('clearSearch').classList.add('hidden');
+      renderStationList(stations);
+    });
+
+    document.getElementById('locateMeBtn').addEventListener('click', triggerLocate);
+
+    window.onload = () => {
+      initMap();
+      renderStationList();
+      setTimeout(triggerLocate, 600);
+    };
+  </script>
+</body>
+</html>
